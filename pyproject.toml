@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fastapi-contract"
+version = "0.1.0"
+description = "Catch FastAPI breaking changes that OpenAPI diff can't see."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = ["annotated-types>=0.7,<1", "fastapi>=0.141.1,<0.142", "pydantic>=2.13.5,<3"]
+
+[project.scripts]
+fastapi-contract = "fastapi_contract.cli:main"
+
+[project.urls]
+Repository = "https://github.com/Ryota-Di/fastapi-contract"
+Issues = "https://github.com/Ryota-Di/fastapi-contract/issues"
+
+[dependency-groups]
+dev = [
+    "fastapi",
+    "httpx",
+    "hypothesis",
+    "mypy",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fastapi_contract"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+warn_unused_ignores = true
+show_error_codes = true
+files = ["src"]
+
+[tool.coverage.run]
+branch = true
+source = ["fastapi_contract"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
