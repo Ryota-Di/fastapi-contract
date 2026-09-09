@@ -15,13 +15,12 @@ OpenAPI diff tools; a SAFE result is not a guarantee of full API compatibility.
 ## Installation
 
 Requires Python 3.11+. Install into your application's dependency environment.
-The intended PyPI installation command, once the preview is published, is:
 
 ```bash
 pip install fastapi-contract
 ```
 
-This checkout has not been published by this change. To try it from source, run
+To try it from source, run
 `pip install .` in this repository, or use `uv sync --group dev` and prefix the
 commands below with `uv run`.
 
