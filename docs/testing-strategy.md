@@ -129,7 +129,7 @@ Early implementation review protects structural properties such as keyed route m
 - comparison scaling;
 - snapshot size.
 
-The FAPI001 Slice 1 traceability matrix records exactly when each deferred performance guard becomes mandatory.
+Deferred performance guards should be recorded with explicit implementation triggers during design review.
 
 ## Mutation testing
 
