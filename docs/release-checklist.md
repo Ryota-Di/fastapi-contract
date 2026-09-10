@@ -15,7 +15,7 @@ checklist, not a statement that work in progress has been implemented.
 - [ ] No `fastapi-contract-dev` reference appears in public distribution metadata
       (including its README description); repository URLs use `Ryota-Di/fastapi-contract`.
 - [ ] Release tag, project version and built distribution versions agree.
-- [ ] PyPI publishing is a **manual final step**, after review of all checks.
+- [ ] Push the release tag only after all checks are green; the tag triggers PyPI publishing.
 
 ## Local reproduction
 
