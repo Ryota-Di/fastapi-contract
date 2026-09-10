@@ -28,6 +28,9 @@ def app_module(tmp_path, *, exclude="None", extra="", object_name="app"):
 
 
 def run(*args):
+    # These published v0.1 regressions explicitly exercise the legacy lane.
+    if args[0] == "snapshot":
+        args = (*args, "--schema-version", "1")
     return cli.main(list(args))
 
 

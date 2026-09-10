@@ -19,11 +19,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install uv
-        run: python -m pip install --upgrade uv
+        run: python -m pip install uv==0.12.7
       - name: Sync dependencies
-        run: uv sync --group dev --python "${{ matrix.python-version }}"
+        run: uv sync --locked --group dev --python "${{ matrix.python-version }}"
       - name: Run tests
-        run: uv run --python "${{ matrix.python-version }}" pytest
+        run: uv run --locked --python "${{ matrix.python-version }}" pytest
 
   quality:
     runs-on: ubuntu-latest
@@ -34,12 +34,32 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install uv
-        run: python -m pip install --upgrade uv
+        run: python -m pip install uv==0.12.7
       - name: Sync dependencies
-        run: uv sync --group dev --python "3.12"
+        run: uv sync --locked --group dev --python "3.12"
       - name: Ruff lint
-        run: uv run ruff check .
+        run: uv run --locked ruff check .
       - name: Ruff format
-        run: uv run ruff format --check .
+        run: uv run --locked ruff format --check .
       - name: Mypy
-        run: uv run mypy src
+        run: uv run --locked mypy src
+
+  packaging:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        run: python -m pip install uv==0.12.7
+      - name: Build sdist and wheel
+        # uv build builds the wheel from the sdist, checking the source archive too.
+        run: uv build --python "${{ matrix.python-version }}" --build-constraints tools/release/build-constraints.txt --require-hashes
+      - name: Verify metadata and isolated wheel installation
+        run: python tools/release/check_wheel.py
