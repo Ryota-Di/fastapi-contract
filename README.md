@@ -201,7 +201,7 @@ FastAPI and Pydantic are pinned to the exact supported versions. Starlette follo
 
 Baseline generation and checking must use matching recorded Python, FastAPI, Starlette, and Pydantic versions, including the Python patch version. An environment mismatch produces `ERROR` rather than making a potentially unreliable compatibility decision. CI for this project verifies Python 3.11 and 3.12.
 
-App loading imports `module:attribute` in the current process, so module-level side effects execute. Load trusted applications only. Invalid baselines are rejected before the target application is imported. Startup, lifespan, and endpoint execution are not part of extraction.
+App loading imports `module:attribute` in the current process, so module-level side effects execute. Load trusted applications only. Malformed JSON and invalid snapshot schema are rejected before the target application is imported. Some semantic or environment errors, such as duplicate route identities or environment mismatches, are detected after app import and still fail closed with `ERROR`. Startup, lifespan, and endpoint execution are not part of extraction.
 
 Successful `snapshot` exits 0. Compatibility results use stdout; `ERROR` and informational migration notices use stderr. Output has no color or TTY-dependent formatting, and consumer wire names use JSON string escaping.
 
