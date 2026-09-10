@@ -2,32 +2,30 @@
 
 Catch FastAPI breaking changes that OpenAPI diff can't see.
 
-**v0.1 Technical Preview:** the CLI currently checks FAPI001 response projection
-compatibility only. The public API and snapshot format are not yet stable.
+`fastapi-contract` compares your FastAPI application's declared runtime contracts
+with a saved baseline. It complements OpenAPI diff: a response key can disappear,
+input can stop reaching a field, or a hidden parameter can become required while
+the documented schema stays the same. SAFE means no incompatibility was detected
+in the supported contract surface; it is not a guarantee of full API compatibility.
 
-## Why
+## Installation and supported versions
 
-A FastAPI route can keep the same OpenAPI response schema while returning fewer
-fields. `fastapi-contract` compares extracted runtime configuration to a saved
-baseline and reports changes in the supported contract surface. It complements
-OpenAPI diff tools; a SAFE result is not a guarantee of full API compatibility.
-
-## Installation
-
-Requires Python 3.11+. Install into your application's dependency environment.
+Requires **Python 3.11+**, **FastAPI 0.141.1**, and **Pydantic 2.13.5**.
+Install into the application's dependency environment:
 
 ```bash
 pip install fastapi-contract
 ```
 
-To try it from source, run
-`pip install .` in this repository, or use `uv sync --group dev` and prefix the
-commands below with `uv run`.
+For a source checkout, use `pip install .`. FastAPI and Pydantic are pinned to the
+exact supported versions. Starlette follows FastAPI's dependency; use the same
+locked environment for baseline generation and checking. Baselines record exact
+Python, FastAPI, Starlette and Pydantic versions, including the Python patch
+version. Mismatches cause ERROR. CI verifies Python 3.11 and 3.12.
 
 ## Quickstart
 
-From your application project directory, create `app/__init__.py` and
-`app/main.py`. Put this in `app/main.py`:
+Create `app/__init__.py` and `app/main.py` in your project:
 
 ```python
 from fastapi import FastAPI
@@ -46,131 +44,139 @@ def users():
     return {"id": 1, "email": "alice@example.com"}
 ```
 
-Save the accepted contract:
+Save the accepted application contract, then check proposed changes against it:
+
+```bash
+fastapi-contract snapshot app.main:app -o fastapi-contract-baseline.json
+fastapi-contract check app.main:app --against fastapi-contract-baseline.json
+```
+
+New snapshots use schema v2 and include response, body binding, and parameter
+facts. An unchanged app prints:
+
+```text
+SAFE: No incompatibility detected in the supported contract surface.
+```
+
+For example, add `response_model_exclude={"email"}` to the route decorator. The
+OpenAPI response schema still describes `email`, but runtime output loses it:
+
+```text
+BREAKING
+response-wire-surface GET /users: Response wire key "email" is no longer produced; key remains documented by OpenAPI.
+```
+
+The command exits 1. No server, endpoint, startup, or lifespan needs to run.
+App loading does execute module-level code; load trusted applications only. An
+invalid baseline is rejected before the target application is imported.
+
+## Supported checks
+
+| Owner | Supported contract change |
+| --- | --- |
+| `response-wire-surface` | Loss of an effective projected top-level response wire key, including `response_model_by_alias` blind spots. Ordinary documented key losses are delegated to OpenAPI diff. |
+| `request-body-binding` | Loss of a supported top-level JSON BaseModel input key's binding to a matched documented input slot. A field falling back to its default can be BREAKING even when HTTP stays 200. |
+| `hidden-parameter-binding` | Loss of a hidden Query, Header or Cookie wire binding. |
+| `hidden-parameter-requirement` | An existing, matched hidden parameter changes from optional to required. New required parameter additions are outside this release. |
+
+Parameter identity uses location and the resolved wire name. Header names are
+canonicalized to ASCII lowercase; Query and Cookie names are case-sensitive.
+Direct declarations and statically resolved dependencies are supported. Moving
+a parameter between them or renaming Python fields/arguments with stable wire
+bindings does not itself cause a finding.
+
+Enum/nested sibling value types and field-local body validators do not automatically
+block unrelated supported keys. Relevant unresolved selectors, alias forms, model
+validators, parameter containers or dependency overrides can produce REVIEW for
+the affected candidate. Findings retain independent uncertainty alongside confirmed
+losses; BREAKING takes precedence over REVIEW without hiding those findings.
+
+## Results and CI
+
+| Result | Stream | Exit code |
+| --- | --- | --- |
+| SAFE | stdout | 0 |
+| BREAKING | stdout | 1 |
+| REVIEW | stdout | 1 |
+| ERROR | stderr | 2 |
+
+Successful `snapshot` exits 0. Invalid arguments, invalid snapshots, environment
+mismatch, app loading, file and analysis failures exit 2. Informational migration
+notices go to stderr and do not affect results or exit codes. Output has no color
+or TTY-dependent formatting; consumer wire names use JSON string escaping.
+
+Commit the baseline alongside the application. With locked uv dependencies:
+
+```yaml
+- run: uv sync --locked
+- run: >-
+    uv run --locked fastapi-contract check app.main:app
+    --against fastapi-contract-baseline.json
+```
+
+Keep the exact Python patch version and lockfile consistent with baseline creation.
+Do not refresh baselines during ordinary CI checks. For an intentional contract
+change, review consumer impact and commit the accepted new baseline for review.
+
+## Upgrading a schema-v1 baseline
+
+Existing schema-v1 baselines continue working and run **legacy checks only**.
+The result retains legacy FAPI001 meaning and output. A valid v1 check prints this
+notice exactly once to stderr, before loading the app:
+
+```text
+Baseline uses snapshot schema v1.
+Running legacy checks only.
+Regenerate the baseline to enable current contract checks.
+```
+
+V1 does not contain enough information to recover current response facts for
+models it marked UNSUPPORTED, body binding, hidden parameter binding, or hidden
+requiredness. Legacy REVIEW limitations remain; a v1 SAFE result means only the
+legacy checks passed.
+
+To enable current checks, check out the application revision whose contract you
+accept as the baseline, use its matching environment, and regenerate:
 
 ```bash
 fastapi-contract snapshot app.main:app \
   -o fastapi-contract-baseline.json
 ```
 
-After editing the application, compare it with that file:
+Review and commit the result. Regeneration creates a **new accepted baseline**;
+it does not reconstruct historical facts. Generating from an already changed app
+accepts that app as the baseline. There is no automatic migration or `migrate`
+command. Explicit `--schema-version 1` remains available, and `check` always selects
+its lane from the saved baseline version. Explicit `--schema-version 2` also works.
 
-```bash
-fastapi-contract check app.main:app \
-  --against fastapi-contract-baseline.json
-```
+## Known limitations
 
-An unchanged app prints `SAFE: No incompatibility detected in the supported
-contract surface.` and exits 0. `snapshot` also accepts `--output` instead of `-o`.
-No server needs to run.
+This release does not add conditional response omission (`exclude_none`,
+`exclude_unset`, `exclude_defaults`), nested projection, full AliasChoices/AliasPath
+support, request coercion/strictness/validation-constraint checks, missing
+Content-Type behavior, route/slash resolution, hidden operation availability,
+Path parameter rules, or new required parameter additions. Arbitrary serializer,
+dependency, and user-code behavior is not analyzed. Relevant unsupported structures
+may require review; unrelated unsupported details do not imply every key is unknown.
 
-## Example breaking change
-
-Before:
-
-```python
-@app.get("/users", response_model=User)
-```
-
-After (replace only the decorator in the example):
-
-```python
-@app.get(
-    "/users",
-    response_model=User,
-    response_model_exclude={"email"},
-)
-```
-
-The OpenAPI response schema still describes `User`, but the runtime response
-loses `email`. Running `check` against the original snapshot prints:
-
-```text
-BREAKING
-FAPI001 GET /users: response fields removed by projection: email
-```
-
-The command exits 1.
-
-## Exit codes
-
-| Code | Result | Meaning |
-| --- | --- | --- |
-| 0 | SAFE | No incompatibility detected in the supported surface; snapshot saved successfully for `snapshot`. |
-| 1 | BREAKING / REVIEW | A breaking projection change or a relevant change requiring human review. |
-| 2 | ERROR | Invalid arguments, app loading/file/analysis failure, invalid snapshot, or incompatible environment. |
-
-## Supported rules
-
-**FAPI001 — Effective Response Projection Changed** is the only enabled rule.
-Slice 1 supports static top-level projection of supported flat response models.
-Unsupported relevant changes can produce REVIEW rather than a definite finding.
-See the [FAPI001 specification](docs/rules/fapi001.md) for the precise boundary.
-
-## Current limitations
-
-- Technical Preview, FAPI001 only; no alias, omission, or request-side checks.
-- Analysis is limited to the supported top-level Slice 1 surface. It does not
-  exercise endpoints or prove their returned values match their declarations.
-- Baselines are snapshot files using the existing schema v1. There is no Git
-  baseline loading, environment reconstruction, or automatic baseline refresh.
-- Baseline and current must use the same runtime/dependency environment. The
-  checker requires matching recorded Python, FastAPI, Starlette, and Pydantic versions;
-  keep exact versions consistent, including Python patch versions.
-- App loading imports `module:attribute` in the current process. Module-level
-  side effects execute; only load trusted application code. No subprocess
-  isolation is provided. Run from the project directory or install its modules.
-- Startup, lifespan, and the server are not run. Routes registered only during
-  startup or lifespan are therefore not included.
-
-## CI usage
-
-Commit `fastapi-contract-baseline.json` alongside your application. For a project
-that has `fastapi-contract` in its locked uv dependencies, a minimal GitHub Actions
-job is:
-
-```yaml
-name: Contract check
-on: [push, pull_request]
-jobs:
-  contract:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
-      - run: python -m pip install uv
-      - run: uv sync --frozen
-      - run: >-
-          uv run fastapi-contract check app.main:app
-          --against fastapi-contract-baseline.json
-```
-
-Commit an exact Python patch version in `.python-version` and use that version
-and the same lockfile when generating the baseline. Keep the committed baseline
-unchanged during ordinary CI checks. For an intentional contract change, review
-its consumer impact, rerun `snapshot` in the matching environment, and commit
-the updated baseline with the application change for review.
-
-## Roadmap
-
-- Response serialized alias compatibility
-- Response omission behavior
-- Request-side runtime contracts
-- Other hidden runtime contracts
-- Git baseline workflow
+Extraction checks declarations, not execution of arbitrary endpoint code. Routes
+registered only during startup/lifespan are not captured. There is no Git baseline
+loader, environment reconstruction, or automatic baseline refresh.
 
 ## Development
 
 ```bash
-uv sync --group dev
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src
-uv build
+uv sync --locked --group dev
+uv run --locked pytest
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy src
+uv build --build-constraints tools/release/build-constraints.txt --require-hashes
 ```
+
+See the [release checklist](docs/release-checklist.md),
+[release notes](docs/releases/v0.2.0.md), [architecture](docs/architecture.md),
+and [testing strategy](docs/testing-strategy.md).
 
 ## License
 

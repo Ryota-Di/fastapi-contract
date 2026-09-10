@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fastapi-contract"
-version = "0.1.0"
+version = "0.2.0"
 description = "Catch FastAPI breaking changes that OpenAPI diff can't see."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-dependencies = ["annotated-types>=0.7,<1", "fastapi>=0.141.1,<0.142", "pydantic>=2.13.5,<3"]
+dependencies = ["annotated-types>=0.7,<1", "fastapi==0.141.1", "pydantic==2.13.5"]
 
 [project.scripts]
 fastapi-contract = "fastapi_contract.cli:main"
